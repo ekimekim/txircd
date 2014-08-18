@@ -1,7 +1,10 @@
+import logging
+import traceback
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 from twisted.internet.interfaces import ISSLTransport
 from twisted.internet.task import LoopingCall
+from twisted.python import log
 from twisted.words.protocols import irc
 from txircd import version
 from txircd.utils import ModeType, now, splitMessage
@@ -70,6 +73,7 @@ class IRCUser(irc.IRC):
             # it seems that twisted.protocols.irc makes no attempt to raise useful "invalid syntax"
             # errors. Any invalid message *should* result in a ValueError, but we can't guarentee that,
             # so let's catch everything.
+            log.msg("Error occurred while processing message:\n{}".format(traceback.format_exc()), logLevel=logging.WARNING)
             self.disconnect("Invalid data")
     
     def sendLine(self, line):
