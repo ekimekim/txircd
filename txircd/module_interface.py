@@ -1,4 +1,5 @@
-from zope.interface import Attribute, Interface
+from zope.interface import Attribute, Interface, implements
+from txircd.utils import splitMessage
 
 class IModuleData(Interface):
     name = Attribute("The module name.")
@@ -52,7 +53,12 @@ class IModuleData(Interface):
         action you're implementing, a typical "normal priority" is 10.
         The function is a reference to the function which handles the action in your module.
         """
-    
+
+    def services():
+        """
+        Returns the services this module provides.
+        """
+
     def userCommands():
         """
         Returns commands supported by this module.  Commands are returned as a list of tuples:
@@ -117,7 +123,10 @@ class ModuleData(object):
     
     def actions(self):
         return []
-    
+
+    def services(self):
+        return []
+
     def userCommands(self):
         return []
     
@@ -246,3 +255,100 @@ class Mode(object):
     
     def showListParams(self, user, target):
         pass
+
+
+class IService(Interface):
+    servname = Attribute("A string that is the nick of the service. Defaults to the class name.")
+    help = Attribute("A string describing the purpose of the service and how to use it.")
+    user_cmd_aliases = Attribute("""An optional dict mapping user commands to (priority, service_command).
+        For example, {"PASS": (20, "LOGIN")} will alias the irc command PASS to the service command
+        "LOGIN" with the same params.
+        If you give None instead of a service command, it will instead expect the command as an arg,
+        eg. {"MYSERV": (20, None)} wil alias the command MYSERV to send a message to your service.
+        """)
+    def commands():
+        """Should return a dict mapping commands to tuple (handler, admin_only, summary, help).
+        Commands MUST be upper case.
+        handler: The function to be called in response to this command.
+        admin_only: Flag. When true, only admins for this service can use this command.
+        summary: A one-line summary for what the command does.
+        help: Full-length usage help for the command.
+        """
+
+
+class Service(object):
+
+    @property
+    def servname(self):
+        return type(self).__name__
+
+    help = ""
+    user_cmd_aliases = {}
+
+    def commands(self):
+        return {}
+
+    def handleMessage(self, user, message):
+        params = message.split()
+        if not params:
+            return
+        command = params.pop(0)
+        self.handleCommand(user, command, params)
+
+    def generateUserCommands(self):
+        """To make this work, call it from your module's userCommands."""
+        class AliasCommand(Command):
+            implements(ICommand)
+            def __init__(self, service, service_cmd):
+                self.service = service
+                self.service_cmd = service_cmd
+            def parseParams(self, source, params, prefix, tags):
+                if self.service_cmd:
+                    command = self.service_cmd
+                else:
+                    if not params:
+                        return None
+                    command, params = params[0], params[1:]
+                return {'command': command, 'params': params}
+            def execute(self, source, data):
+                self.service.handleCommand(source, data['command'], data['params'])
+        return [(user_cmd, priority, AliasCommand(self, service_cmd))
+                for user_cmd, (priority, service_cmd) in self.user_cmd_aliases.items()]
+
+    def handleCommand(self, user, command, params):
+        command = command.upper()
+        if command == 'HELP':
+            self.handleHelp(user, params)
+            return
+        if command in self.commands():
+            handler, admin_only, summary, long_help = self.commands()[command]
+            if not admin_only or self.isAdmin(user):
+                handler(user, params)
+                return
+        user.sendMessage('NOTICE', self.name,
+                         ":Unknown command \x02{}\x02. Use \x1f/msg {} HELP\x1f for help.".format(command, self.name))
+
+    def handleHelp(self, user, params):
+        if not params:
+            for chunk in splitMessage(self.help, 80):
+                user.sendMessage('NOTICE', self.name, ":{}".format(chunk))
+            for command, (handler, admin_only, summary, long_help) in sorted(self.commands().items()):
+                if admin_only and not self.isAdmin(user):
+                    continue
+                user.sendMessage('NOTICE', self.name, ":\x02{}\x02: {}".format(command, summary))
+            user.sendMessage('NOTICE', self.name, ":*** End of help")
+            return
+        for command in params:
+            command = command.upper()
+            if command in self.commands():
+                handler, admin_only, summary, long_help = self.commands()[command]
+                if not admin_only or self.isAdmin(user):
+                    user.sendMessage('NOTICE', self.name, ":*** Help for \x02{}\x02:".format(command))
+                    for chunk in splitMessage(long_help, 80):
+                        user.sendMessage('NOTICE', self.name, ":{}".format(chunk))
+                    user.sendMessage('NOTICE', self.name, ":*** End of help for \x02{}\x02".format(command))
+                    continue
+            user.sendMessage('NOTICE', self.name, ":No help available for \x02{}\x02".format(command))
+
+    def isAdmin(self, user):
+        return False # TODO how?

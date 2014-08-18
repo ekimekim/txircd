@@ -7,7 +7,7 @@ from twisted.plugin import getPlugins
 from twisted.python import log
 from txircd.config import Config
 from txircd.factory import ServerListenFactory, UserFactory
-from txircd.module_interface import ICommand, IMode, IModuleData
+from txircd.module_interface import ICommand, IMode, IModuleData, IService
 from txircd.utils import CaseInsensitiveDictionary, ModeType, now, unescapeEndpointDescription
 import logging, shelve, txircd.modules
 
@@ -48,6 +48,7 @@ class IRCd(Service):
         self.users = {}
         self.userNicks = CaseInsensitiveDictionary()
         self.channels = CaseInsensitiveDictionary()
+        self.services = CaseInsensitiveDictionary()
         self.servers = {}
         self.serverNames = CaseInsensitiveDictionary()
         
@@ -133,6 +134,7 @@ class IRCd(Service):
             "channelmodes": module.channelModes(),
             "usermodes": module.userModes(),
             "actions": module.actions(),
+            "services": module.services(),
             "usercommands": module.userCommands(),
             "servercommands": module.serverCommands()
         }
@@ -142,6 +144,7 @@ class IRCd(Service):
         newActions = {}
         newUserCommands = {}
         newServerCommands = {}
+        newServices = []
         common = False
         for mode in moduleData["channelmodes"]:
             if mode[0] in self.channelModeTypes:
@@ -183,6 +186,11 @@ class IRCd(Service):
                 newServerCommands[command[0]] = []
             newServerCommands[command[0]].append((command[2], command[1]))
             common = True
+        for service in moduleData["services"]:
+            if not IService.providedBy(service):
+                raise ModuleLoadError(module.name, "Returns a service object ({}) that doesnt implement IService.".format(service))
+            if service not in newServices:
+                newServices.append(service)
         if not common:
             common = module.requiredOnAllServers
         
@@ -242,6 +250,9 @@ class IRCd(Service):
                         break
                 else:
                     self.serverCommands[command].append(data)
+        for service in newServices:
+            if service.servname not in self.services:
+                self.services[service.servname] = service
     
     def unloadModule(self, moduleName, fullUnload = True):
         unloadDeferreds = []

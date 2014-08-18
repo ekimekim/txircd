@@ -64,10 +64,13 @@ class MessageCommands(ModuleData):
     def cmdParseParams(self, user, params, prefix, tags):
         channels = []
         users = []
+        services = []
         user.startErrorBatch("MsgCmd")
         for target in params[0].split(","):
             if target in self.ircd.channels:
                 channels.append(self.ircd.channels[target])
+            elif target in self.ircd.services:
+                services.append(self.ircd.services[target])
             elif target in self.ircd.userNicks:
                 users.append(self.ircd.users[self.ircd.userNicks[target]])
             else:
@@ -75,11 +78,14 @@ class MessageCommands(ModuleData):
         message = params[1]
         chanMessages = {target: message for target in channels}
         userMessages = {target: message for target in users}
+        serviceMessages = {target: message for target in services}
         data = {}
         if channels:
             data["targetchans"] = chanMessages
         if users:
             data["targetusers"] = userMessages
+        if services:
+            data["targetservices"] = serviceMessages
         if data:
             return data
         return None
@@ -95,6 +101,11 @@ class MessageCommands(ModuleData):
             for target, message in data["targetchans"].iteritems():
                 if message:
                     target.sendMessage(command, ":{}".format(message), to=target.name, sourceuser=user, skipusers=[user])
+                    sentAMessage = True
+        if "targetservices" in data:
+            for target, message in data["targetservices"].iteritems():
+                if message:
+                    target.handleMessage(user, message)
                     sentAMessage = True
         if not sentAMessage:
             user.sendMessage(irc.ERR_NOTEXTTOSEND, ":No text to send")
