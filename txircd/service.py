@@ -43,6 +43,16 @@ class Service(ModuleData):
                      "or you can give it specific commands to get extra info on them - for example, "
                      "\x02/msg {} HELP HELP\x02 will print this message.").format(self.nick)
                     ),
+            'ADMIN': (self.addAdmin, True, "Give a user admin rights for this service",
+                      "Gives a user access to the admin-only commands for this service. "
+                      "Run this command with one or more user nicks as the arguments. "
+                      "These users will then be able to use the admin-only commands of this service."
+            'UNADMIN': (self.delAdmin, True, "Revoke a user's admin rights for this service",
+                        "Revokes a user's access to the admin-only commands for this service. "
+                        "Run this command with one or more user nicks as the arguments. "
+                        "These users will no longer be able to use the admin-only commands of this service. "
+                        "Note that server operators will always have admin rights no matter what. "
+                        "Be careful! It is possible to unadmin yourself."
         }
         commands.update(self.serviceCommands())
         return commands
@@ -55,6 +65,7 @@ class Service(ModuleData):
         self.user.setSendMsgFunc(self.handleMessage)
         self.user.changeNick(self.nick)
         self.user.register('NICK')
+        self.admins = self.ircd.storage.setdefault(self.name, {}).setdefault('admins', set())
 
     def handleMessage(self, user, command, *params, **kw):
         """Handle any messages directly addressed to us."""
@@ -128,6 +139,35 @@ class Service(ModuleData):
                 user.sendMessage('NOTICE', self.name, ":*** End of help for \x02{}\x02".format(command))
                 return
         user.sendMessage('NOTICE', self.name, ":No help available for \x02{}\x02".format(command))
+
+    def addAdmin(self, user, params):
+        if not params:
+            user.sendMessage('NOTICE', self.name, ":Error: No users to admin?")
+            return
+        success = set()
+        for nick in params:
+            if self.isAdmin(nick):
+                user.sendMessage('NOTICE', self.name, ":{} is already an admin".format(nick))
+            else:
+                self.admins.add(nick)
+                success.add(nick)
+        if success:
+            user.sendMessage('NOTICE', self.name, ":Successfully added {} to admins".format(", ".join(success)))
+
+    def delAdmin(self, user, params):
+        if not params:
+            user.sendMessage('NOTICE', self.name, ":Error: No users to unadmin?")
+            return
+        success = set()
+        for nick in params:
+            if not self.isAdmin(nick):
+                user.sendMessage('NOTICE', self.name, ":{} isn't an admin".format(nick))
+            elif self.
+            else:
+                self.admins.remove(nick)
+                success.add(nick)
+        if success:
+            user.sendMessage('NOTICE', self.name, ":Successfully added {} to admins".format(", ".join(success)))
 
     def isAdmin(self, user):
         return False # TODO how?
