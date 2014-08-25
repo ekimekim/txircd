@@ -2,7 +2,7 @@ from twisted.plugin import IPlugin
 from twisted.python import log
 from twisted.words.protocols import irc
 from txircd.module_interface import Command, ICommand, IModuleData, ModuleData
-from txircd.utils import ModeType, timestamp
+from txircd.utils import formatModes, ModeType, timestamp
 from zope.interface import implements
 import logging
 
@@ -45,40 +45,8 @@ class ModeCommand(ModuleData):
                 log.msg("ModeCommand: No valid minimum level found; defaulting to 100", logLevel=logging.WARNING)
                 self.minLevel = 100
     
-    def getOutputModes(self, modes):
-        addInStr = None
-        modeStrList = []
-        params = []
-        modeLists = []
-        modeLen = 0
-        for modeData in modes:
-            adding, mode, param = modeData
-            paramLen = 0
-            if param is not None:
-                paramLen = len(param)
-            if modeLen + paramLen + 3 > 300: # Don't let the mode output get too long
-                modeLists.append(["".join(modeStrList)] + params)
-                addInStr = None
-                modeStrList = []
-                params = []
-                modeLen = 0
-            if adding != addInStr:
-                if adding:
-                    modeStrList.append("+")
-                else:
-                    modeStrList.append("-")
-                addInStr = adding
-                modeLen += 1
-            modeStrList.append(mode)
-            modeLen += 1
-            if param is not None:
-                params.append(param)
-                modeLen += 1 + paramLen
-        modeLists.append(["".join(modeStrList)] + params)
-        return modeLists
-    
     def sendChannelModesToUsers(self, users, channel, source, sourceName, modes):
-        modeOuts = self.getOutputModes(modes)
+        modeOuts = formatModes(modes)
         for modeOut in modeOuts:
             modeStr = modeOut[0]
             params = modeOut[1:]
@@ -87,7 +55,7 @@ class ModeCommand(ModuleData):
         del users[:]
     
     def sendChannelModesToServers(self, channel, source, sourceName, modes):
-        modeOuts = self.getOutputModes(modes)
+        modeOuts = formatModes(modes)
         
         if source[:3] == self.ircd.serverID:
             fromServer = None
@@ -103,7 +71,7 @@ class ModeCommand(ModuleData):
                     server.sendMessage("MODE", channel.name, str(timestamp(channel.existedSince)), modeStr, *params, prefix=source)
     
     def sendUserModesToUsers(self, users, user, source, sourceName, modes):
-        modeOuts = self.getOutputModes(modes)
+        modeOuts = formatModes(modes)
         for modeOut in modeOuts:
             modeStr = modeOut[0]
             params = modeOut[1:]
@@ -112,7 +80,7 @@ class ModeCommand(ModuleData):
         del users[:]
     
     def sendUserModesToServers(self, user, source, sourceName, modes):
-        modeOuts = self.getOutputModes(modes)
+        modeOuts = formatModes(modes)
         
         if source[:3] == self.ircd.serverID:
             fromServer = None

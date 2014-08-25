@@ -153,3 +153,36 @@ def splitMessage(message, maxLength):
             msgList.append(limitedMessage)
             message = message[maxLength:]
     return msgList
+
+def formatModes(modes):
+    """Formats a list of (adding, mode, param) for output"""
+    addInStr = None
+    modeStrList = []
+    params = []
+    modeLists = []
+    modeLen = 0
+    for modeData in modes:
+        adding, mode, param = modeData
+        paramLen = 0
+        if param is not None:
+            paramLen = len(param)
+        if modeLen + paramLen + 3 > 300: # Don't let the mode output get too long
+            modeLists.append(["".join(modeStrList)] + params)
+            addInStr = None
+            modeStrList = []
+            params = []
+            modeLen = 0
+        if adding != addInStr:
+            if adding:
+                modeStrList.append("+")
+            else:
+                modeStrList.append("-")
+            addInStr = adding
+            modeLen += 1
+        modeStrList.append(mode)
+        modeLen += 1
+        if param is not None:
+            params.append(param)
+            modeLen += 1 + paramLen
+    modeLists.append(["".join(modeStrList)] + params)
+    return modeLists
